@@ -2,7 +2,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
@@ -38,8 +41,8 @@ func main() {
 		input = strings.TrimSpace(input)
 		switch input {
 		case "1":
-			go Receive(conn)
 			fmt.Println("可以开始聊天了,输入quit/QUIT退出聊天室")
+			go Receive(conn)
 			for {
 				if Write(conn, inputReader) {
 					break
@@ -50,10 +53,7 @@ func main() {
 		case "3":
 			fmt.Println("输入[private]username:message的格式即可私聊给对方")
 		case "4":
-			for i := 0; i < 10; i++ {
-				fmt.Println("正在退出")
-			}
-
+			fmt.Println("正在退出")
 			return
 		default:
 			fmt.Println("无效输入")
@@ -66,13 +66,17 @@ func SetName(conn net.Conn, inputReader *bufio.Reader) {
 	for {
 		fmt.Println("请输入您想设置的id")
 		Write(conn, inputReader)
-		buf := [512]byte{}
-		n, err := conn.Read(buf[:])
+		result, err := ReadMessage(conn)
 		if err != nil {
 			return
 		}
-		result := string(buf[:n])
+		if strings.TrimSpace(result) == "PING" {
+			_ = SendWithPrefix(conn, "PONG")
+			continue
+		}
+
 		if strings.TrimSpace(result) == "设置成功" {
+			fmt.Println("用户名设置成功！")
 			break
 		} else {
 			fmt.Println("名称重复请重新输入")
@@ -91,13 +95,13 @@ func CloseConn(conn net.Conn) {
 // Write 向服务端写入
 func Write(conn net.Conn, inputReader *bufio.Reader) bool {
 	input, _ := inputReader.ReadString('\n')
-	inputInfo := strings.Trim(input, "\r\n")
+	inputInfo := strings.TrimSpace(input)
 
 	if strings.ToUpper(inputInfo) == "QUIT" {
 		running = false
 		return true
 	}
-	_, err := conn.Write([]byte(inputInfo))
+	err := SendWithPrefix(conn, inputInfo)
 	if err != nil {
 		return true
 	}
@@ -106,12 +110,58 @@ func Write(conn net.Conn, inputReader *bufio.Reader) bool {
 
 // Receive 接收服务端返回的消息并输出
 func Receive(conn net.Conn) {
-	buf := [512]byte{}
+
 	for running {
-		n, err := conn.Read(buf[:])
+		n, err := ReadMessage(conn)
 		if err != nil {
 			return
 		}
-		fmt.Println(string(buf[:n]))
+
+		if strings.TrimSpace(string(n)) == "PING" {
+			err := SendWithPrefix(conn, "PONG")
+			if err != nil {
+				fmt.Println("心跳回复失败:", err)
+				return
+			}
+			continue
+		}
+
+		fmt.Println(n)
 	}
+}
+
+// ReadMessage 读取带前缀信息
+func ReadMessage(conn net.Conn) (string, error) {
+	lenBuf := make([]byte, 4)
+	if _, err := io.ReadFull(conn, lenBuf); err != nil {
+		return "", err
+	}
+	length := binary.BigEndian.Uint32(lenBuf)
+
+	msgBuf := make([]byte, length)
+	if _, err := io.ReadFull(conn, msgBuf); err != nil {
+		return "", err
+	}
+
+	return string(msgBuf), nil
+}
+
+// SendWithPrefix 加前缀发送
+func SendWithPrefix(conn net.Conn, msg string) error {
+	data := []byte(msg)
+	length := uint32(len(data))
+	buf := new(bytes.Buffer)
+
+	if err := binary.Write(buf, binary.BigEndian, length); err != nil {
+		return fmt.Errorf("binary write err: %v", err)
+	}
+
+	if _, err := buf.Write(data); err != nil {
+		return fmt.Errorf("buffer write err: %v", err)
+	}
+
+	if _, err := conn.Write(buf.Bytes()); err != nil {
+		return fmt.Errorf("conn write err: %v", err)
+	}
+	return nil
 }
