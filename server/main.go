@@ -1,7 +1,7 @@
 package main
 
 import (
-	"Chatplus/server/connection"
+	"github.com/Definition-f-Imaginative-Spring/tcp_service/server/connection"
 )
 
 func main() {
