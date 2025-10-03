@@ -2,10 +2,8 @@ package main
 
 import (
 	"bufio"
-	"bytes"
-	"encoding/binary"
 	"fmt"
-	"io"
+	"github.com/Definition-f-Imaginative-Spring/tep_service/server/connection"
 	"net"
 	"os"
 	"strings"
@@ -66,12 +64,15 @@ func SetName(conn net.Conn, inputReader *bufio.Reader) {
 	for {
 		fmt.Println("请输入您想设置的id")
 		Write(conn, inputReader)
-		result, err := ReadMessage(conn)
+		result, err := connection.ReadMessage(conn)
 		if err != nil {
 			return
 		}
 		if strings.TrimSpace(result) == "PING" {
-			_ = SendWithPrefix(conn, "PONG")
+			err = connection.SendWithPrefix(conn, "PONG")
+			if err != nil {
+				fmt.Println("err :", err)
+			}
 			continue
 		}
 
@@ -101,7 +102,7 @@ func Write(conn net.Conn, inputReader *bufio.Reader) bool {
 		running = false
 		return true
 	}
-	err := SendWithPrefix(conn, inputInfo)
+	err := connection.SendWithPrefix(conn, inputInfo)
 	if err != nil {
 		return true
 	}
@@ -110,58 +111,20 @@ func Write(conn net.Conn, inputReader *bufio.Reader) bool {
 
 // Receive 接收服务端返回的消息并输出
 func Receive(conn net.Conn) {
-
 	for running {
-		n, err := ReadMessage(conn)
+		n, err := connection.ReadMessage(conn)
 		if err != nil {
 			return
 		}
 
 		if strings.TrimSpace(string(n)) == "PING" {
-			err := SendWithPrefix(conn, "PONG")
+			err := connection.SendWithPrefix(conn, "PONG")
 			if err != nil {
 				fmt.Println("心跳回复失败:", err)
 				return
 			}
 			continue
 		}
-
 		fmt.Println(n)
 	}
-}
-
-// ReadMessage 读取带前缀信息
-func ReadMessage(conn net.Conn) (string, error) {
-	lenBuf := make([]byte, 4)
-	if _, err := io.ReadFull(conn, lenBuf); err != nil {
-		return "", err
-	}
-	length := binary.BigEndian.Uint32(lenBuf)
-
-	msgBuf := make([]byte, length)
-	if _, err := io.ReadFull(conn, msgBuf); err != nil {
-		return "", err
-	}
-
-	return string(msgBuf), nil
-}
-
-// SendWithPrefix 加前缀发送
-func SendWithPrefix(conn net.Conn, msg string) error {
-	data := []byte(msg)
-	length := uint32(len(data))
-	buf := new(bytes.Buffer)
-
-	if err := binary.Write(buf, binary.BigEndian, length); err != nil {
-		return fmt.Errorf("binary write err: %v", err)
-	}
-
-	if _, err := buf.Write(data); err != nil {
-		return fmt.Errorf("buffer write err: %v", err)
-	}
-
-	if _, err := conn.Write(buf.Bytes()); err != nil {
-		return fmt.Errorf("conn write err: %v", err)
-	}
-	return nil
 }
