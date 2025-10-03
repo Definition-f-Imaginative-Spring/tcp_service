@@ -116,7 +116,6 @@ func (cm *ConnectManager) heartbeatCheck() {
 		var toClose []net.Conn
 		var toPing []net.Conn
 
-		// 持锁检查状态，收集待操作的连接
 		cm.Mutex.Lock()
 		for conn := range cm.Connections {
 			last, ok := cm.lastActive[conn]
@@ -129,7 +128,7 @@ func (cm *ConnectManager) heartbeatCheck() {
 		}
 		cm.Mutex.Unlock()
 
-		// 先发送心跳
+		// 发送心跳
 		for _, conn := range toPing {
 			if err := SendWithPrefix(conn, "PING"); err != nil {
 				fmt.Println("发送心跳失败:", err)
@@ -139,7 +138,7 @@ func (cm *ConnectManager) heartbeatCheck() {
 
 		// 关闭超时或发送失败的连接
 		for _, conn := range toClose {
-			cm.close(conn) // 这里已经带锁删除 map
+			cm.close(conn)
 		}
 	}
 }
@@ -200,7 +199,6 @@ func (cm *ConnectManager) SendMessage(conn net.Conn, username string) {
 		if !b {
 			break
 		}
-		//去除首位空白符
 		trimmedResult := strings.TrimSpace(result)
 
 		if trimmedResult == "" {
@@ -216,7 +214,7 @@ func (cm *ConnectManager) SendMessage(conn net.Conn, username string) {
 			continue
 		}
 
-		message := fmt.Sprintf("用户%s:%s \n", username, result)
+		message := fmt.Sprintf("用户%s:%s", username, result)
 		if len(result) <= 9 {
 			fmt.Printf("用户%s:%s \n", username, result)
 			cm.Broadcast([]byte(message))
